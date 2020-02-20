@@ -1,0 +1,238 @@
+---
+title: "fitting gams with no forcing through origin"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Here we fit gams with no forcing through origin
+
+libraries
+`````{r}
+library(knitr)
+library(mgcv)
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+library(tidymv)
+```````
+data
+``````{r}
+a<-read.csv("org_and_cult_haldrates_before_gams.csv")
+``````
+get how many intervals there are for each series
+``````{r}
+a<-a%>%
+group_by(population, variable)%>%
+mutate(max_intervals=max(interval))
+```````
+get a unique designator for each series
+`````{r}
+a$popvar<-paste(a$population, a$variable, sep="_")
+``````
+make a function to fit a gam
+``````{r}
+onepopvar<-function(onepopvar){
+model<- gam(abs.hald.num ~ s(interval, bs = 'cr'), data=onepopvar, family=gaussian)
+interval<-1:100
+pred<-as.data.frame(interval)
+p1<-predict.gam(model,pred,se=TRUE)
+pred$fit<-p1$fit
+pred$se<-p1$se
+return(pred)
+}
+```````
+run the model over all popvar
+``````{r}
+r1<-a %>% group_by(popvar) 
+%>% do(onepopvar(.))
+r2<-as.data.frame(r1)
+````````
+
+`````{r}
+a3<-unique(a[c("popvar", "max_intervals")])
+r3<-merge(r2, a3, by="popvar")
+r3<-subset(r3, interval<=max_intervals)
+```````
+check the fit of a single popvar
+`````{r}
+popvars<-unique(r3$popvar)
+popvars
+``````
+
+`````{r}
+a_check<-subset(a, popvar=="Cepaea_nemoralis_banded")
+r_check<-subset(r3, popvar=="Cepaea_nemoralis_banded")
+a_check_means<-a_check%>%
+group_by(interval)%>%
+summarize(mean.abs.hald.num=mean(abs.hald.num))
+```````
+plot abs.hald.num
+`````{r}
+ggplot()+
+geom_point(data=a_check, aes(x=interval, y=abs.hald.num), size=1, colour="grey")+
+geom_point(data=a_check_means, aes(x=interval, y=mean.abs.hald.num), size=1, colour="black")+
+geom_line(data=r_check, aes(x=interval, y=fit), size=1, colour="red")+
+theme_classic()
+```````
+### check h_1
+
+``````{r}
+a_check_means<-a%>%
+group_by(population, popvar, interval)%>%
+summarize(mean.abs.hald.num=mean(abs.hald.num))%>%
+filter(interval==1)
+`````````
+
+``````{r}
+r_check<-r3%>%
+filter(interval==1)
+r_check$interval<-NULL
+````````
+
+``````{t}
+r4<-merge(a_check_means, r_check, by="popvar")
+````
+
+`````{r}
+x<-0:15
+y<-0:15
+equal<-as.data.frame(cbind(x,y))
+```````
+
+```{r}
+ggplot()+
+geom_point(data=r4, aes(x=mean.abs.hald.num, y=fit, colour=as.factor(population)), size=1)+
+geom_line(data=equal, aes(x=x, y=y), size=0.5, colour="red")+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+
+```{r}
+ggplot()+
+geom_point(data=r4, aes(x=log(mean.abs.hald.num), y=log(fit), colour=as.factor(population)), size=1)+
+geom_line(data=equal, aes(x=log(x), y=log(y)), size=0.5, colour="red")+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+why is G. aculeatus so low? 
+``````{r}
+check<-subset(r4, population=="Gasterosteus_aculeatus")
+````````
+### check h-25
+
+``````{r}
+a_check_means<-a%>%
+group_by(population, popvar, interval)%>%
+summarize(mean.abs.hald.num=mean(abs.hald.num))%>%
+filter(interval==25)
+`````````
+
+``````{r}
+r_check<-subset(r3, interval==25)
+r_check$interval<-NULL
+````````
+
+``````{t}
+r_check<-as.data.frame(r_check)
+a_check_means<-as.data.frame(a_check_means)
+r5<-merge(a_check_means, r_check, by.x="popvar", by.y="popvar")
+````
+
+`````{r}
+x<-0:40
+y<-0:40
+equal<-as.data.frame(cbind(x,y))
+```````
+
+```{r}
+ggplot()+
+geom_point(data=r5, aes(x=mean.abs.hald.num, y=fit, colour=as.factor(population)), size=1)+
+geom_line(data=equal, aes(x=x, y=y), size=0.5, colour="red")+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+
+```{r}
+ggplot()+
+geom_point(data=r5, aes(x=log(mean.abs.hald.num), y=log(fit), colour=as.factor(population)), size=1)+
+geom_line(data=equal, aes(x=log(x), y=log(y)), size=0.5, colour="red")+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+So, they're all good except for Jadera which has a low sample size and the values are all over the place.
+
+look at the haldane rates themselves
+``````{r}
+r3$haldane<-r3$fit/r3$interval
+a2<-unique((a[c("population", "popvar")]))
+r10<-merge(a2, r3, by="popvar")
+r10<- r10[order(r10$popvar, r10$interval),] 
+```````
+
+```{r}
+ggplot()+
+geom_line(data=r10, aes(x=interval, y=haldane, colour=as.factor(population), group=popvar), size=0.5)+
+theme_classic()+
+theme(aspect.ratio=1)
+```````
+#### checking individual values
+Check individual values
+``````{r}
+check<-subset(r10, population=="Gasterosteus_aculeatus" & interval==1)
+check2<-a%>% 
+group_by(population, popvar, interval)%>%
+summarize(hald.rate=mean(hald.rate))%>%
+filter(population=="Gasterosteus_aculeatus" & interval==1)
+check2<-as.data.frame(check2)
+```````
+So they all seem to be OK except for Gasterosteus aculeatus which seems low. 
+Let's see if we can get a better fit by increasing the number of k
+#### re-running Gasterosteus with higher k
+
+````{r}
+ga<-subset(a, population=="Gasterosteus_aculeatus")
+```````
+make a function to fit a gam
+``````{r}
+onepopvar<-function(onepopvar){
+model<- gam(abs.hald.num ~ s(interval, bs = 'cr', k=20), data=onepopvar, family=gaussian)
+interval<-1:100
+pred<-as.data.frame(interval)
+p1<-predict.gam(model,pred,se=TRUE)
+pred$fit<-p1$fit
+pred$se<-p1$se
+return(pred)
+}
+```````
+run the model over all popvar
+``````{r}
+ga2<-ga %>% group_by(popvar) %>% do(onepopvar(.))
+ga2<-as.data.frame(ga2)
+ga2$haldane<-ga2$fit/ga2$interval
+head(ga2)
+````````
+that doesn't help.  I think we are just going to have to live with that. 
+
+#### get CIs of fits
+
+``````{r}
+r3$LCI<-r3$fit-r3$se*1.96
+r3$UCI<-r3$fit+r3$se*1.96
+r3$haldane_LCI<-r3$LCI/r3$interval
+r3$haldane_UCI<-r3$UCI/r3$interval
+r3$haldane_CI<-(r3$haldane_UCI-r3$haldane_LCI)/2
+````````
+
+``````{r}
+a5<-unique(a[c("population", "variable", "popvar")])
+`````````
+
+``````{r}
+r5<-merge(r3, a5, by="popvar")
+write.csv(r5, "all_cult_organic_haldane_gams_july_2019.csv")
+``````
+
+
